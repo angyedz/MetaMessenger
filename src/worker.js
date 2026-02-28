@@ -30,14 +30,14 @@ async function getAuthenticatedUser(request, env) {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null;
   }
-  
+
   const token = authHeader.substring(7);
   const session = await env.SESSIONS_KV.get(token);
-  
+
   if (!session) {
     return null;
   }
-  
+
   try {
     const sessionData = JSON.parse(session);
     if (sessionData.expiresAt < Date.now()) {
@@ -48,6 +48,72 @@ async function getAuthenticatedUser(request, env) {
   } catch {
     return null;
   }
+}
+
+// Получение IP адреса клиента
+function getClientIP(request) {
+  const cfConnectingIP = request.headers.get('CF-Connecting-IP');
+  const xRealIP = request.headers.get('X-Real-IP');
+  const xForwardedFor = request.headers.get('X-Forwarded-For');
+  
+  if (cfConnectingIP) return cfConnectingIP;
+  if (xRealIP) return xRealIP;
+  if (xForwardedFor) return xForwardedFor.split(',')[0].trim();
+  return 'unknown';
+}
+
+// Проверка, забанен ли IP
+async function isIPBanned(ip, env) {
+  if (!ip || ip === 'unknown') return false;
+  const bannedIPs = await env.USERS_KV.get('banned_ips');
+  if (!bannedIPs) return false;
+  
+  try {
+    const banned = JSON.parse(bannedIPs);
+    return banned.includes(ip);
+  } catch {
+    return false;
+  }
+}
+
+// Добавление IP в бан-лист
+async function banIP(ip, reason, duration, env) {
+  if (!ip || ip === 'unknown') return false;
+  
+  const bannedIPs = await env.USERS_KV.get('banned_ips');
+  const banned = bannedIPs ? JSON.parse(bannedIPs) : [];
+  
+  if (!banned.includes(ip)) {
+    banned.push(ip);
+    await env.USERS_KV.put('banned_ips', JSON.stringify(banned));
+  }
+  
+  // Сохраняем информацию о бане
+  const banInfo = {
+    ip,
+    reason: reason || 'No reason',
+    bannedAt: Date.now(),
+    duration: duration || 'permanent',
+    expiresAt: duration ? Date.now() + (duration * 1000) : null
+  };
+  await env.USERS_KV.put(`ban:${ip}`, JSON.stringify(banInfo));
+  
+  return true;
+}
+
+// Разбан IP
+async function unbanIP(ip, env) {
+  if (!ip || ip === 'unknown') return false;
+  
+  const bannedIPs = await env.USERS_KV.get('banned_ips');
+  if (!bannedIPs) return false;
+  
+  const banned = JSON.parse(bannedIPs);
+  const newBanned = banned.filter(bannedIP => bannedIP !== ip);
+  await env.USERS_KV.put('banned_ips', JSON.stringify(newBanned));
+  await env.USERS_KV.delete(`ban:${ip}`);
+  
+  return true;
 }
 
 // JSON response helper
@@ -322,6 +388,62 @@ const apiHandlers = {
       }
     }
     return jsonResponse({ error: 'Сообщение не найдено' }, 404);
+  },
+
+  // Admin: Ban IP
+  'POST /api/admin/ban': async (request, env, user) => {
+    // Проверка на админа (можно добавить проверку роли)
+    const adminUsernames = ['admin']; // Замените на username админа
+    if (!adminUsernames.includes(user.username)) {
+      return jsonResponse({ error: 'Доступ запрещён' }, 403);
+    }
+
+    const { ip, reason, duration } = await request.json();
+
+    if (!ip) {
+      return jsonResponse({ error: 'IP адрес обязателен' }, 400);
+    }
+
+    const success = await banIP(ip, reason, duration, env);
+    return jsonResponse({ success, message: `IP ${ip} забанен` });
+  },
+
+  // Admin: Unban IP
+  'POST /api/admin/unban': async (request, env, user) => {
+    const adminUsernames = ['admin'];
+    if (!adminUsernames.includes(user.username)) {
+      return jsonResponse({ error: 'Доступ запрещён' }, 403);
+    }
+
+    const { ip } = await request.json();
+
+    if (!ip) {
+      return jsonResponse({ error: 'IP адрес обязателен' }, 400);
+    }
+
+    const success = await unbanIP(ip, env);
+    return jsonResponse({ success, message: `IP ${ip} разбанен` });
+  },
+
+  // Admin: List banned IPs
+  'GET /api/admin/bans': async (request, env, user) => {
+    const adminUsernames = ['admin'];
+    if (!adminUsernames.includes(user.username)) {
+      return jsonResponse({ error: 'Доступ запрещён' }, 403);
+    }
+
+    const bannedIPs = await env.USERS_KV.get('banned_ips');
+    const banned = bannedIPs ? JSON.parse(bannedIPs) : [];
+
+    const banDetails = [];
+    for (const ip of banned) {
+      const banInfo = await env.USERS_KV.get(`ban:${ip}`);
+      if (banInfo) {
+        banDetails.push(JSON.parse(banInfo));
+      }
+    }
+
+    return jsonResponse({ banned: banDetails });
   }
 };
 
@@ -338,6 +460,17 @@ export default {
 
     // API routes
     if (path.startsWith('/api/')) {
+      // Проверка забаненного IP (кроме публичных эндпоинтов)
+      const clientIP = getClientIP(request);
+      const isPublicRoute = path === '/api/register' || path === '/api/login';
+      
+      if (!isPublicRoute && await isIPBanned(clientIP, env)) {
+        return jsonResponse({ 
+          error: 'Ваш IP адрес заблокирован',
+          code: 'IP_BANNED'
+        }, 403);
+      }
+
       try {
         let handler = null;
         let urlParams = [];

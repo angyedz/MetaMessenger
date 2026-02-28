@@ -1,7 +1,10 @@
 // Meta Messenger - Frontend JavaScript
 
 // URL Cloudflare Worker API (замените на ваш после деплоя)
-const API_BASE_URL = 'https://meta-messenger.lilo35382.workers.dev';
+// Для локальной разработки: http://localhost:3000
+const API_BASE_URL = window.location.hostname === 'localhost' 
+  ? 'http://localhost:3000' 
+  : 'https://meta-messenger.lilo35382.workers.dev';
 
 class MetaMessenger {
   constructor() {

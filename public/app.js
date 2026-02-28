@@ -40,12 +40,24 @@ class MetaMessenger {
     
     // Logout
     document.getElementById('logout-btn').addEventListener('click', () => this.handleLogout());
-    
+
     // Search
     document.getElementById('user-search').addEventListener('input', (e) => this.searchUsers(e.target.value));
-    
+
     // Message form
     document.getElementById('message-form').addEventListener('submit', (e) => this.sendMessage(e));
+
+    // Message character counter
+    document.getElementById('message-input').addEventListener('input', (e) => this.updateMessageCounter(e.target.value.length));
+  }
+
+  updateMessageCounter(length) {
+    const counter = document.getElementById('message-counter');
+    if (counter) {
+      counter.textContent = `${length}/2000`;
+      counter.classList.toggle('warning', length > 1800 && length <= 2000);
+      counter.classList.toggle('error', length > 2000);
+    }
   }
   
   switchAuthTab(tab) {
@@ -307,10 +319,13 @@ class MetaMessenger {
       
       // Load messages
       await this.loadMessages(userId);
-      
+
       // Mark as read
       await this.apiRequest(`/api/messages/${userId}/read`, { method: 'POST' });
-      
+
+      // Initialize message counter
+      this.updateMessageCounter(0);
+
     } catch (error) {
       console.error('Open chat error:', error);
     }
@@ -377,13 +392,13 @@ class MetaMessenger {
   }
   
   startPolling() {
-    // Poll for new messages every 3 seconds
+    // Poll for new messages every 1 second for better delivery
     this.pollingInterval = setInterval(() => {
       if (this.currentChat) {
         this.loadMessages(this.currentChat);
       }
       this.loadChats();
-    }, 3000);
+    }, 1000);
   }
   
   stopPolling() {

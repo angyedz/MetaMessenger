@@ -477,10 +477,12 @@ body {
 
 .message-form {
   display: flex;
+  align-items: center;
   gap: 10px;
   padding: 20px 25px;
   background: var(--sidebar-bg);
   border-top: 1px solid var(--border-color);
+  position: relative;
 }
 
 #message-input {
@@ -490,6 +492,22 @@ body {
   border-radius: 24px;
   font-size: 15px;
   font-family: inherit;
+}
+
+.message-counter {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  min-width: 45px;
+  text-align: right;
+}
+
+.message-counter.warning {
+  color: #FF9800;
+}
+
+.message-counter.error {
+  color: var(--error-color);
 }
 
 #message-input:focus {

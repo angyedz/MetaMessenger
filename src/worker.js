@@ -250,20 +250,24 @@ const apiHandlers = {
   'POST /api/messages/:userId': async (request, env, user, urlParams) => {
     const targetUserId = urlParams[0];
     const { text } = await request.json();
-    
+
     if (!text || !text.trim()) {
       return jsonResponse({ error: 'Сообщение не может быть пустым' }, 400);
     }
-    
+
+    if (text.length > 2000) {
+      return jsonResponse({ error: 'Сообщение слишком длинное (максимум 2000 символов)' }, 400);
+    }
+
     const targetUsername = await env.USERS_KV.get(`userId:${targetUserId}`);
     if (!targetUsername) {
       return jsonResponse({ error: 'Пользователь не найден' }, 404);
     }
-    
+
     const chatId = [user.id, targetUserId].sort().join('_');
     const messagesStr = await env.MESSAGES_KV.get(`chat:${chatId}`);
     const messages = messagesStr ? JSON.parse(messagesStr) : [];
-    
+
     const message = {
       id: generateId(),
       text: text.trim(),
@@ -273,10 +277,10 @@ const apiHandlers = {
       timestamp: Date.now(),
       read: false
     };
-    
+
     messages.push(message);
     if (messages.length > 1000) messages.shift();
-    
+
     await env.MESSAGES_KV.put(`chat:${chatId}`, JSON.stringify(messages));
     return jsonResponse({ message }, 201);
   },

@@ -700,18 +700,6 @@ body {
   display: flex;
   gap: 10px;
   max-width: 70%;
-  animation: messageIn 0.3s ease;
-}
-
-@keyframes messageIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .message.outgoing {

@@ -18,5 +18,13 @@ id = "650935527cf84cafbd3549bf3780bb37"
 binding = "USERS_KV"
 id = "c65aa462cd5f4931b51c3394ad3203f3"
 
+[[kv_namespaces]]
+binding = "IP_LOGS_KV"
+id = "f06cbd66ab2948ef9abcb1b1c728672d"
+
+[[kv_namespaces]]
+binding = "BANNED_KV"
+id = "c4498890a18e4872bbab773191fc5f33"
+
 [vars]
 APP_NAME = "Meta Messenger"

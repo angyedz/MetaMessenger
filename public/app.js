@@ -21,6 +21,7 @@ class MetaMessenger {
       this.showMainScreen();
       this.loadChats();
       this.startPolling();
+      this.refreshAdminStatus();
     } else {
       this.showAuthScreen();
     }
@@ -596,12 +597,41 @@ class MetaMessenger {
       }
       this.loadChats();
     }, 1000);
+
+    // Обновляем статус админа каждые 5 секунд
+    this.adminRefreshInterval = setInterval(() => {
+      this.refreshAdminStatus();
+    }, 5000);
+  }
+
+  async refreshAdminStatus() {
+    try {
+      const data = await this.apiRequest('/api/me');
+      if (data.user) {
+        const wasAdmin = this.user.isAdmin || this.user.superAdmin;
+        const isAdmin = data.user.isAdmin || data.user.superAdmin;
+
+        this.user.isAdmin = data.user.isAdmin;
+        this.user.superAdmin = data.user.superAdmin;
+
+        // Обновляем UI если статус изменился
+        if (wasAdmin !== isAdmin) {
+          this.showMainScreen();
+        }
+      }
+    } catch (error) {
+      // Игнорируем ошибки
+    }
   }
 
   stopPolling() {
     if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
+    }
+    if (this.adminRefreshInterval) {
+      clearInterval(this.adminRefreshInterval);
+      this.adminRefreshInterval = null;
     }
   }
 

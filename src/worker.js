@@ -639,12 +639,12 @@ const apiHandlers = {
       return jsonResponse({ error: 'Доступ запрещён. Требуется статус администратора' }, 403);
     }
 
-    const bannedIPs = await env.USERS_KV.get('banned_ips');
+    const bannedIPs = await env.BANNED_KV.get('banned_ips');
     const banned = bannedIPs ? JSON.parse(bannedIPs) : [];
 
     const banDetails = [];
     for (const ip of banned) {
-      const banInfo = await env.USERS_KV.get(`ban:${ip}`);
+      const banInfo = await env.BANNED_KV.get(`ban:${ip}`);
       if (banInfo) {
         banDetails.push(JSON.parse(banInfo));
       }

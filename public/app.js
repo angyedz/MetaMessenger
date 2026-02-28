@@ -1,5 +1,8 @@
 // Meta Messenger - Frontend JavaScript
 
+// URL Cloudflare Worker API (замените на ваш после деплоя)
+const API_BASE_URL = 'https://meta-messenger.lilo35382.workers.dev/api';
+
 class MetaMessenger {
   constructor() {
     this.token = localStorage.getItem('messenger_token');
@@ -56,8 +59,7 @@ class MetaMessenger {
       ...(this.token && { 'Authorization': `Bearer ${this.token}` })
     };
     
-    // Используем относительный путь для Cloudflare Worker
-    const apiUrl = endpoint.startsWith('http') ? endpoint : `/api${endpoint}`;
+    const apiUrl = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`;
     const response = await fetch(apiUrl, {
       ...options,
       headers: { ...headers, ...options.headers }

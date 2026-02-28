@@ -158,28 +158,29 @@ const apiHandlers = {
   'GET /api/users/search': async (request, env, user) => {
     const url = new URL(request.url);
     const query = url.searchParams.get('q') || '';
-    
+
     if (!query) {
       return jsonResponse({ users: [] });
     }
-    
+
     const keys = await env.USERS_KV.list({ prefix: 'user:' });
     const users = [];
-    
+
     for (const key of keys.keys) {
-      if (key.name.startsWith('user:') && !key.name.includes(':')) {
+      // Ключи вида 'user:username', проверяем что это не 'user:id' или 'contacts:id'
+      if (key.name.startsWith('user:') && !key.name.includes(':', 5)) {
         const userStr = await env.USERS_KV.get(key.name);
         if (userStr) {
           const u = JSON.parse(userStr);
-          if (u.username !== user.username && 
-              (u.username.toLowerCase().includes(query.toLowerCase()) || 
+          if (u.username !== user.username &&
+              (u.username.toLowerCase().includes(query.toLowerCase()) ||
                u.displayName.toLowerCase().includes(query.toLowerCase()))) {
             users.push({ id: u.id, username: u.username, displayName: u.displayName, avatar: u.avatar });
           }
         }
       }
     }
-    
+
     return jsonResponse({ users: users.slice(0, 20) });
   },
 

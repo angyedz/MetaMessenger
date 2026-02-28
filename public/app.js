@@ -175,20 +175,26 @@ class MetaMessenger {
   
   async searchUsers(query) {
     const resultsContainer = document.getElementById('search-results');
-    
+
     if (!query || query.length < 2) {
       resultsContainer.classList.add('hidden');
       resultsContainer.innerHTML = '';
       return;
     }
-    
+
     try {
-      const data = await this.apiRequest(`/api/users/search?q=${encodeURIComponent(query)}`);
-      
+      const url = `/api/users/search?q=${encodeURIComponent(query)}`;
+      console.log('Search URL:', url);
+      const data = await this.apiRequest(url);
+      console.log('Search results:', data);
+
+      // Клонируем узел, чтобы удалить старые обработчики событий
+      const newContainer = resultsContainer.cloneNode(false);
+
       if (data.users.length === 0) {
-        resultsContainer.innerHTML = '<div class="search-result-item" style="cursor: default;">Пользователи не найдены</div>';
+        newContainer.innerHTML = '<div class="search-result-item" style="cursor: default;">Пользователи не найдены</div>';
       } else {
-        resultsContainer.innerHTML = data.users.map(user => `
+        newContainer.innerHTML = data.users.map(user => `
           <div class="search-result-item" data-user-id="${user.id}">
             <img src="${user.avatar}" alt="${user.displayName}" class="avatar">
             <div class="search-result-info">
@@ -199,41 +205,41 @@ class MetaMessenger {
           </div>
         `).join('');
       }
-      
-      resultsContainer.classList.remove('hidden');
-      
-      // Bind add button events
-      resultsContainer.querySelectorAll('.btn-add').forEach(btn => {
-        btn.addEventListener('click', (e) => {
+
+      // Заменяем старый контейнер на новый
+      resultsContainer.parentNode.replaceChild(newContainer, resultsContainer);
+
+      // Добавляем обработчик на новый контейнер
+      newContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('.btn-add');
+        if (btn) {
           e.stopPropagation();
-          this.addContact(btn.dataset.userId);
-        });
-      });
-      
-      // Bind click to add contact
-      resultsContainer.querySelectorAll('.search-result-item').forEach(item => {
-        item.addEventListener('click', (e) => {
-          if (!e.target.classList.contains('btn-add')) {
-            const userId = item.dataset.userId;
-            if (userId) {
-              this.addContact(userId);
-            }
+          const userId = btn.getAttribute('data-user-id');
+          if (userId) {
+            this.addContact(userId);
           }
-        });
+        }
       });
+
+      newContainer.classList.remove('hidden');
     } catch (error) {
       console.error('Search error:', error);
     }
   }
   
   async addContact(userId) {
+    console.log('Adding contact:', userId);
     try {
-      await this.apiRequest(`/api/contacts/${userId}`, { method: 'POST' });
+      const url = `/api/contacts/${userId}`;
+      console.log('Request URL:', url);
+      const data = await this.apiRequest(url, { method: 'POST' });
+      console.log('Add contact response:', data);
       await this.loadChats();
       document.getElementById('search-results').classList.add('hidden');
       document.getElementById('user-search').value = '';
     } catch (error) {
       console.error('Add contact error:', error);
+      alert('Ошибка добавления контакта: ' + error.message);
     }
   }
   

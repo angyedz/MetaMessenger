@@ -104,11 +104,11 @@ const apiHandlers = {
       createdAt: Date.now(),
       avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName || username)}&background=random`
     };
-    
+
     await env.USERS_KV.put(`user:${username}`, JSON.stringify(user));
     await env.USERS_KV.put(`userId:${user.id}`, username);
     await env.USERS_KV.put(`contacts:${user.id}`, JSON.stringify([]));
-    
+
     return jsonResponse({ user: { id: user.id, username: user.username, displayName: user.displayName, avatar: user.avatar } }, 201);
   },
 
@@ -213,8 +213,10 @@ const apiHandlers = {
   },
 
   'POST /api/contacts/:userId': async (request, env, user, urlParams) => {
-    const targetUserId = urlParams[1];
+    const targetUserId = urlParams[0];
+    console.log('Adding contact:', targetUserId, 'urlParams:', urlParams);
     const targetUsername = await env.USERS_KV.get(`userId:${targetUserId}`);
+    console.log('Found username:', targetUsername);
     if (!targetUsername) {
       return jsonResponse({ error: 'Пользователь не найден' }, 404);
     }
@@ -238,7 +240,7 @@ const apiHandlers = {
   },
 
   'GET /api/messages/:userId': async (request, env, user, urlParams) => {
-    const targetUserId = urlParams[1];
+    const targetUserId = urlParams[0];
     const chatId = [user.id, targetUserId].sort().join('_');
     const messagesStr = await env.MESSAGES_KV.get(`chat:${chatId}`);
     const messages = messagesStr ? JSON.parse(messagesStr) : [];
@@ -246,7 +248,7 @@ const apiHandlers = {
   },
 
   'POST /api/messages/:userId': async (request, env, user, urlParams) => {
-    const targetUserId = urlParams[1];
+    const targetUserId = urlParams[0];
     const { text } = await request.json();
     
     if (!text || !text.trim()) {
@@ -280,7 +282,7 @@ const apiHandlers = {
   },
 
   'POST /api/messages/:userId/read': async (request, env, user, urlParams) => {
-    const targetUserId = urlParams[1];
+    const targetUserId = urlParams[0];
     const chatId = [user.id, targetUserId].sort().join('_');
     const messagesStr = await env.MESSAGES_KV.get(`chat:${chatId}`);
     if (messagesStr) {
@@ -298,7 +300,7 @@ const apiHandlers = {
   },
 
   'DELETE /api/messages/:messageId': async (request, env, user, urlParams) => {
-    const messageId = urlParams[1];
+    const messageId = urlParams[0];
     const contactsStr = await env.USERS_KV.get(`contacts:${user.id}`);
     const contacts = contactsStr ? JSON.parse(contactsStr) : [];
     
@@ -340,8 +342,9 @@ export default {
           const [handlerMethod, handlerPath] = route.split(' ');
           if (handlerMethod !== method) continue;
 
-          const routeParts = handlerPath.split('/');
-          const pathParts = path.split('/');
+          // Убираем начальный '/' и разбиваем на части
+          const routeParts = handlerPath.slice(1).split('/');
+          const pathParts = path.slice(1).split('/');
 
           if (routeParts.length !== pathParts.length) continue;
 

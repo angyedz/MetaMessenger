@@ -8,15 +8,15 @@ assets = { directory = "public", binding = "ASSETS" }
 # KV Namespaces
 [[kv_namespaces]]
 binding = "MESSAGES_KV"
-id = "3ecdb75c0eca40879b66fae501fb3560"
-
-[[kv_namespaces]]
-binding = "USERS_KV"
-id = "f76099536cac49388a30b5d0fe730834"
+id = "d18cc052508c4a1ca6b9b02a666802c1"
 
 [[kv_namespaces]]
 binding = "SESSIONS_KV"
-id = "eaf3857f7b9a410984e5f782ec4aba05"
+id = "650935527cf84cafbd3549bf3780bb37"
+
+[[kv_namespaces]]
+binding = "USERS_KV"
+id = "c65aa462cd5f4931b51c3394ad3203f3"
 
 [vars]
 APP_NAME = "Meta Messenger"

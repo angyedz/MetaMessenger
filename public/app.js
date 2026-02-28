@@ -353,26 +353,80 @@ class MetaMessenger {
 
   renderMessages(messages) {
     const container = document.getElementById('messages-container');
+    const existingMessages = container.querySelectorAll('.message');
 
-    container.innerHTML = messages.map(msg => {
+    // Если сообщений нет или первое новое - рендерим всё
+    if (existingMessages.length === 0) {
+      container.innerHTML = messages.map(msg => {
+        const isOutgoing = msg.senderId === this.user.id;
+        const time = this.formatTime(msg.timestamp);
+
+        return `
+          <div class="message ${isOutgoing ? 'outgoing' : 'incoming'}" data-message-id="${msg.id}">
+            <img src="${msg.senderAvatar}" alt="${msg.senderName}" class="message-avatar">
+            <div class="message-content">
+              <div class="message-bubble">${this.escapeHtml(msg.text)}</div>
+              <div class="message-meta">
+                <span class="message-time">${time}</span>
+                ${isOutgoing && msg.read ? '<span class="message-read">✓✓</span>' : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      container.scrollTop = container.scrollHeight;
+      return;
+    }
+
+    // Получаем ID существующих сообщений
+    const existingIds = new Set(Array.from(existingMessages).map(el => el.dataset.messageId));
+
+    // Находим новые сообщения
+    const newMessages = messages.filter(msg => !existingIds.has(msg.id));
+
+    if (newMessages.length === 0) {
+      // Проверяем статус прочтения для исходящих
+      messages.forEach(msg => {
+        if (msg.senderId === this.user.id && msg.read) {
+          const el = container.querySelector(`[data-message-id="${msg.id}"] .message-read`);
+          if (!el) {
+            const messageEl = container.querySelector(`[data-message-id="${msg.id}"] .message-meta`);
+            if (messageEl && !messageEl.querySelector('.message-read')) {
+              messageEl.innerHTML += '<span class="message-read">✓✓</span>';
+            }
+          }
+        }
+      });
+      return;
+    }
+
+    // Добавляем только новые сообщения
+    const scrollContainer = container;
+    const wasScrolledToBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < 50;
+
+    newMessages.forEach(msg => {
       const isOutgoing = msg.senderId === this.user.id;
       const time = this.formatTime(msg.timestamp);
 
-      return `
-        <div class="message ${isOutgoing ? 'outgoing' : 'incoming'}">
-          <img src="${msg.senderAvatar}" alt="${msg.senderName}" class="message-avatar">
-          <div class="message-content">
-            <div class="message-bubble">${this.escapeHtml(msg.text)}</div>
-            <div class="message-meta">
-              <span class="message-time">${time}</span>
-              ${isOutgoing && msg.read ? '<span class="message-read">✓✓</span>' : ''}
-            </div>
+      const messageEl = document.createElement('div');
+      messageEl.className = `message ${isOutgoing ? 'outgoing' : 'incoming'}`;
+      messageEl.dataset.messageId = msg.id;
+      messageEl.innerHTML = `
+        <img src="${msg.senderAvatar}" alt="${msg.senderName}" class="message-avatar">
+        <div class="message-content">
+          <div class="message-bubble">${this.escapeHtml(msg.text)}</div>
+          <div class="message-meta">
+            <span class="message-time">${time}</span>
+            ${isOutgoing && msg.read ? '<span class="message-read">✓✓</span>' : ''}
           </div>
         </div>
       `;
-    }).join('');
+      container.appendChild(messageEl);
+    });
 
-    container.scrollTop = container.scrollHeight;
+    if (wasScrolledToBottom) {
+      container.scrollTop = container.scrollHeight;
+    }
   }
 
   async sendMessage(e) {

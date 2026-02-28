@@ -2,6 +2,9 @@
 .wrangler/
 wrangler.json
 
+# GitHub token
+.github_token
+
 # Node modules
 node_modules/
 

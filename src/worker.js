@@ -438,8 +438,10 @@ const apiHandlers = {
   'GET /api/chats': async (request, env, user) => {
     const contactsStr = await env.USERS_KV.get(`contacts:${user.id}`);
     const contacts = contactsStr ? JSON.parse(contactsStr) : [];
-    
+
     const chats = [];
+    let maxTimestamp = 0;
+
     for (const contactId of contacts) {
       const contactUsername = await env.USERS_KV.get(`userId:${contactId}`);
       if (contactUsername) {
@@ -449,7 +451,11 @@ const apiHandlers = {
           const messagesStr = await env.MESSAGES_KV.get(`chat:${[user.id, contact.id].sort().join('_')}`);
           const messages = messagesStr ? JSON.parse(messagesStr) : [];
           const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
-          
+
+          if (lastMessage && lastMessage.timestamp > maxTimestamp) {
+            maxTimestamp = lastMessage.timestamp;
+          }
+
           chats.push({
             user: { id: contact.id, username: contact.username, displayName: contact.displayName, avatar: contact.avatar },
             lastMessage,
@@ -458,9 +464,21 @@ const apiHandlers = {
         }
       }
     }
-    
+
     chats.sort((a, b) => (b.lastMessage?.timestamp || 0) - (a.lastMessage?.timestamp || 0));
-    return jsonResponse({ chats });
+
+    // ETag для кэширования
+    const etag = `"${maxTimestamp}-${chats.length}"`;
+    const ifNoneMatch = request.headers.get('If-None-Match');
+
+    if (ifNoneMatch === etag) {
+      return new Response(null, { status: 304 });
+    }
+
+    const response = jsonResponse({ chats });
+    response.headers.set('ETag', etag);
+    response.headers.set('Cache-Control', 'private, max-age=5');
+    return response;
   },
 
   'POST /api/contacts/:userId': async (request, env, user, urlParams) => {
@@ -495,7 +513,20 @@ const apiHandlers = {
     const chatId = [user.id, targetUserId].sort().join('_');
     const messagesStr = await env.MESSAGES_KV.get(`chat:${chatId}`);
     const messages = messagesStr ? JSON.parse(messagesStr) : [];
-    return jsonResponse({ messages });
+
+    // ETag для кэширования — хэш последнего сообщения
+    const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+    const etag = lastMsg ? `"${lastMsg.id}-${lastMsg.timestamp}"` : '"empty"';
+    const ifNoneMatch = request.headers.get('If-None-Match');
+
+    if (ifNoneMatch === etag) {
+      return new Response(null, { status: 304 });
+    }
+
+    const response = jsonResponse({ messages });
+    response.headers.set('ETag', etag);
+    response.headers.set('Cache-Control', 'private, max-age=5');
+    return response;
   },
 
   'POST /api/messages/:userId': async (request, env, user, urlParams) => {

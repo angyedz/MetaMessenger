@@ -10,6 +10,7 @@ class MetaMessenger {
     this.user = JSON.parse(localStorage.getItem('messenger_user') || 'null');
     this.currentChat = null;
     this.pollingInterval = null;
+    this.etags = new Map(); // Кэш ETag для запросов
     this.init();
   }
 
@@ -91,11 +92,28 @@ class MetaMessenger {
       ...(this.token && { 'Authorization': `Bearer ${this.token}` })
     };
 
+    // Добавляем If-None-Match если есть сохранённый ETag
+    const cacheKey = options.method === 'GET' ? endpoint : null;
+    if (cacheKey && this.etags.has(cacheKey)) {
+      headers['If-None-Match'] = this.etags.get(cacheKey);
+    }
+
     const apiUrl = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`;
     const response = await fetch(apiUrl, {
       ...options,
       headers: { ...headers, ...options.headers }
     });
+
+    // 304 Not Modified — данные не изменились
+    if (response.status === 304) {
+      return { cached: true };
+    }
+
+    // Сохраняем новый ETag для GET запросов
+    const newEtag = response.headers.get('ETag');
+    if (newEtag && cacheKey) {
+      this.etags.set(cacheKey, newEtag);
+    }
 
     const data = await response.json();
 
@@ -280,7 +298,9 @@ class MetaMessenger {
   async loadChats() {
     try {
       const data = await this.apiRequest('/api/chats');
-      this.renderChats(data.chats);
+      if (!data.cached && data.chats) {
+        this.renderChats(data.chats);
+      }
     } catch (error) {
       console.error('Load chats error:', error);
     }
@@ -346,7 +366,9 @@ class MetaMessenger {
   async loadMessages(userId) {
     try {
       const data = await this.apiRequest(`/api/messages/${userId}`);
-      this.renderMessages(data.messages);
+      if (!data.cached && data.messages) {
+        this.renderMessages(data.messages);
+      }
     } catch (error) {
       console.error('Load messages error:', error);
     }
@@ -591,17 +613,18 @@ class MetaMessenger {
   }
 
   startPolling() {
+    // Polling каждые 5 секунд вместо 1 — экономим 80% запросов
     this.pollingInterval = setInterval(() => {
       if (this.currentChat) {
         this.loadMessages(this.currentChat);
       }
       this.loadChats();
-    }, 1000);
+    }, 5000);
 
-    // Обновляем статус админа каждые 5 секунд
+    // Обновляем статус админа каждые 30 секунд вместо 5 — экономим 83% запросов
     this.adminRefreshInterval = setInterval(() => {
       this.refreshAdminStatus();
-    }, 5000);
+    }, 30000);
   }
 
   async refreshAdminStatus() {

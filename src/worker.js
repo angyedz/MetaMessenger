@@ -44,6 +44,18 @@ async function getAuthenticatedUser(request, env) {
       await env.SESSIONS_KV.delete(token);
       return null;
     }
+    
+    // Обновляем статус админа из KV (может измениться)
+    const username = await env.USERS_KV.get(`userId:${sessionData.user.id}`);
+    if (username) {
+      const userData = await env.USERS_KV.get(`user:${username}`);
+      if (userData) {
+        const userFull = JSON.parse(userData);
+        sessionData.user.isAdmin = userFull.isAdmin || false;
+        sessionData.user.superAdmin = userFull.superAdmin || false;
+      }
+    }
+    
     return sessionData.user;
   } catch {
     return null;
@@ -99,6 +111,44 @@ async function banIP(ip, reason, duration, env) {
   await env.USERS_KV.put(`ban:${ip}`, JSON.stringify(banInfo));
   
   return true;
+}
+
+// Проверка, является ли пользователь администратором
+async function isAdmin(user, env) {
+  if (!user || !user.id) return false;
+  
+  // Получаем данные пользователя из KV
+  const username = await env.USERS_KV.get(`userId:${user.id}`);
+  if (!username) return false;
+  
+  const userData = await env.USERS_KV.get(`user:${username}`);
+  if (!userData) return false;
+  
+  try {
+    const userFull = JSON.parse(userData);
+    // Проверяем поле isAdmin (должно быть true)
+    return userFull.isAdmin === true;
+  } catch {
+    return false;
+  }
+}
+
+// Назначение/снятие статуса администратора (только для супер-админа)
+async function setAdminStatus(userId, isAdminStatus, env) {
+  const username = await env.USERS_KV.get(`userId:${userId}`);
+  if (!username) return false;
+  
+  const userData = await env.USERS_KV.get(`user:${username}`);
+  if (!userData) return false;
+  
+  try {
+    const userFull = JSON.parse(userData);
+    userFull.isAdmin = isAdminStatus === true;
+    await env.USERS_KV.put(`user:${username}`, JSON.stringify(userFull));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // Разбан IP
@@ -194,13 +244,18 @@ const apiHandlers = {
       return jsonResponse({ error: 'Пользователь уже существует' }, 409);
     }
 
+    // Первый пользователь становится супер-админом
+    const isFirstUser = !existingUser && (await env.USERS_KV.list({ prefix: 'user:' })).keys.length === 0;
+
     const user = {
       id: generateId(),
       username,
       displayName: displayName || username,
       passwordHash: await hashPassword(password),
       createdAt: Date.now(),
-      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName || username)}&background=random`
+      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName || username)}&background=random`,
+      isAdmin: isFirstUser,
+      superAdmin: isFirstUser
     };
 
     await env.USERS_KV.put(`user:${username}`, JSON.stringify(user));
@@ -241,7 +296,14 @@ const apiHandlers = {
 
     const token = generateSessionToken();
     const sessionData = {
-      user: { id: user.id, username: user.username, displayName: user.displayName, avatar: user.avatar },
+      user: { 
+        id: user.id, 
+        username: user.username, 
+        displayName: user.displayName, 
+        avatar: user.avatar,
+        isAdmin: user.isAdmin || false,
+        superAdmin: user.superAdmin || false
+      },
       expiresAt: Date.now() + (30 * 24 * 60 * 60 * 1000)
     };
 
@@ -458,11 +520,10 @@ const apiHandlers = {
   },
 
   // Admin: Ban IP
-  'POST /api/admin/ban': async (request, env, user) => {
-    // Проверка на админа (можно добавить проверку роли)
-    const adminUsernames = ['admin']; // Замените на username админа
-    if (!adminUsernames.includes(user.username)) {
-      return jsonResponse({ error: 'Доступ запрещён' }, 403);
+  'POST /api/admin/ban': async (request, env, user, urlParams, headers) => {
+    // Проверка на админа через статус в KV
+    if (!await isAdmin(user, env)) {
+      return jsonResponse({ error: 'Доступ запрещён. Требуется статус администратора' }, 403);
     }
 
     const { ip, reason, duration } = await request.json();
@@ -476,10 +537,9 @@ const apiHandlers = {
   },
 
   // Admin: Unban IP
-  'POST /api/admin/unban': async (request, env, user) => {
-    const adminUsernames = ['admin'];
-    if (!adminUsernames.includes(user.username)) {
-      return jsonResponse({ error: 'Доступ запрещён' }, 403);
+  'POST /api/admin/unban': async (request, env, user, urlParams, headers) => {
+    if (!await isAdmin(user, env)) {
+      return jsonResponse({ error: 'Доступ запрещён. Требуется статус администратора' }, 403);
     }
 
     const { ip } = await request.json();
@@ -493,10 +553,9 @@ const apiHandlers = {
   },
 
   // Admin: List banned IPs
-  'GET /api/admin/bans': async (request, env, user) => {
-    const adminUsernames = ['admin'];
-    if (!adminUsernames.includes(user.username)) {
-      return jsonResponse({ error: 'Доступ запрещён' }, 403);
+  'GET /api/admin/bans': async (request, env, user, urlParams, headers) => {
+    if (!await isAdmin(user, env)) {
+      return jsonResponse({ error: 'Доступ запрещён. Требуется статус администратора' }, 403);
     }
 
     const bannedIPs = await env.USERS_KV.get('banned_ips');
@@ -511,6 +570,29 @@ const apiHandlers = {
     }
 
     return jsonResponse({ banned: banDetails });
+  },
+
+  // Super Admin: Set admin status
+  'POST /api/admin/set-admin': async (request, env, user, urlParams, headers) => {
+    // Только супер-админ может назначать админов (первый пользователь или с superAdmin: true)
+    const userData = await env.USERS_KV.get(`user:${user.username}`);
+    const userFull = userData ? JSON.parse(userData) : null;
+    
+    if (!userFull || (userFull.isAdmin !== true && userFull.superAdmin !== true)) {
+      return jsonResponse({ error: 'Доступ запрещён. Требуется статус супер-администратора' }, 403);
+    }
+
+    const { userId, isAdminStatus } = await request.json();
+
+    if (!userId) {
+      return jsonResponse({ error: 'userId обязателен' }, 400);
+    }
+
+    const success = await setAdminStatus(userId, isAdminStatus, env);
+    return jsonResponse({ 
+      success, 
+      message: `Статус администратора ${isAdminStatus ? 'назначен' : 'снят'}` 
+    });
   }
 };
 

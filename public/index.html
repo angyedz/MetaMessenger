@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meta Messenger</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app">
+    <!-- Auth Screen -->
+    <div id="auth-screen" class="auth-screen">
+      <div class="auth-container">
+        <div class="auth-logo">
+          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="20" cy="20" r="20" fill="url(#gradient)"/>
+            <path d="M20 8C13.373 8 8 13.373 8 20C8 26.627 13.373 32 20 32C26.627 32 32 26.627 32 20C32 13.373 26.627 8 20 8ZM20 28C15.582 28 12 24.418 12 20C12 15.582 15.582 12 20 12C24.418 12 28 15.582 28 20C28 24.418 24.418 28 20 28Z" fill="white"/>
+            <circle cx="20" cy="20" r="4" fill="white"/>
+            <defs>
+              <linearGradient id="gradient" x1="0" y1="0" x2="40" y2="40">
+                <stop stop-color="#0088FF"/>
+                <stop offset="1" stop-color="#0056B3"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <h1>Meta Messenger</h1>
+        </div>
+        
+        <div class="auth-tabs">
+          <button class="auth-tab active" data-tab="login">Вход</button>
+          <button class="auth-tab" data-tab="register">Регистрация</button>
+        </div>
+        
+        <form id="login-form" class="auth-form">
+          <div class="form-group">
+            <label for="login-username">Username</label>
+            <input type="text" id="login-username" placeholder="Введите username" required>
+          </div>
+          <div class="form-group">
+            <label for="login-password">Пароль</label>
+            <input type="password" id="login-password" placeholder="Введите пароль" required>
+          </div>
+          <button type="submit" class="btn-primary">Войти</button>
+          <div id="login-error" class="error-message"></div>
+        </form>
+        
+        <form id="register-form" class="auth-form hidden">
+          <div class="form-group">
+            <label for="register-username">Username</label>
+            <input type="text" id="register-username" placeholder="Придумайте username" required>
+          </div>
+          <div class="form-group">
+            <label for="register-display-name">Отображаемое имя</label>
+            <input type="text" id="register-display-name" placeholder="Как вас называть">
+          </div>
+          <div class="form-group">
+            <label for="register-password">Пароль</label>
+            <input type="password" id="register-password" placeholder="Придумайте пароль" required minlength="6">
+          </div>
+          <button type="submit" class="btn-primary">Зарегистрироваться</button>
+          <div id="register-error" class="error-message"></div>
+        </form>
+      </div>
+    </div>
+    
+    <!-- Main App Screen -->
+    <div id="main-screen" class="main-screen hidden">
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="current-user">
+            <img id="current-user-avatar" src="" alt="Avatar" class="avatar">
+            <span id="current-user-name"></span>
+          </div>
+          <button id="logout-btn" class="btn-icon" title="Выйти">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          </button>
+        </div>
+        
+        <div class="search-container">
+          <div class="search-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="m21 21-4.35-4.35"/>
+            </svg>
+            <input type="text" id="user-search" placeholder="Поиск пользователей...">
+          </div>
+        </div>
+        
+        <div id="search-results" class="search-results hidden"></div>
+        
+        <div class="chats-list">
+          <h3>Чаты</h3>
+          <div id="chats-container"></div>
+        </div>
+      </aside>
+      
+      <!-- Chat Area -->
+      <main class="chat-area">
+        <div id="no-chat-selected" class="no-chat-selected">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          <p>Выберите чат для начала общения</p>
+        </div>
+        
+        <div id="chat-container" class="chat-container hidden">
+          <div class="chat-header">
+            <img id="chat-user-avatar" src="" alt="Avatar" class="avatar avatar-large">
+            <div class="chat-user-info">
+              <h2 id="chat-user-name"></h2>
+              <span id="chat-user-status">online</span>
+            </div>
+          </div>
+          
+          <div id="messages-container" class="messages-container"></div>
+          
+          <form id="message-form" class="message-form">
+            <input type="text" id="message-input" placeholder="Напишите сообщение..." autocomplete="off">
+            <button type="submit" class="btn-send">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"/>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          </form>
+        </div>
+      </main>
+    </div>
+  </div>
+  
+  <script src="/app.js"></script>
+</body>
+</html>

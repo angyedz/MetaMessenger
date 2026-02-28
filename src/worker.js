@@ -78,8 +78,15 @@ function handleCorsPreflight() {
 // API Handlers
 const apiHandlers = {
   'POST /api/register': async (request, env) => {
-    const { username, password, displayName } = await request.json();
-    
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return jsonResponse({ error: 'Invalid JSON' }, 400);
+    }
+
+    const { username, password, displayName } = body;
+
     if (!username || !password) {
       return jsonResponse({ error: 'Username и password обязательны' }, 400);
     }
@@ -324,55 +331,56 @@ export default {
 
     // API routes
     if (path.startsWith('/api/')) {
-      let handler = null;
-      let urlParams = [];
-      
-      for (const [route, handlerFunc] of Object.entries(apiHandlers)) {
-        const [handlerMethod, handlerPath] = route.split(' ');
-        if (handlerMethod !== method) continue;
-        
-        const routeParts = handlerPath.split('/');
-        const pathParts = path.split('/');
-        
-        if (routeParts.length !== pathParts.length) continue;
-        
-        let matches = true;
-        urlParams = [];
-        
-        for (let i = 0; i < routeParts.length; i++) {
-          if (routeParts[i].startsWith(':')) {
-            urlParams.push(pathParts[i]);
-          } else if (routeParts[i] !== pathParts[i]) {
-            matches = false;
+      try {
+        let handler = null;
+        let urlParams = [];
+
+        for (const [route, handlerFunc] of Object.entries(apiHandlers)) {
+          const [handlerMethod, handlerPath] = route.split(' ');
+          if (handlerMethod !== method) continue;
+
+          const routeParts = handlerPath.split('/');
+          const pathParts = path.split('/');
+
+          if (routeParts.length !== pathParts.length) continue;
+
+          let matches = true;
+          urlParams = [];
+
+          for (let i = 0; i < routeParts.length; i++) {
+            if (routeParts[i].startsWith(':')) {
+              urlParams.push(pathParts[i]);
+            } else if (routeParts[i] !== pathParts[i]) {
+              matches = false;
+              break;
+            }
+          }
+
+          if (matches) {
+            handler = handlerFunc;
             break;
           }
         }
-        
-        if (matches) {
-          handler = handlerFunc;
-          break;
+
+        if (!handler) {
+          console.log('Handler not found for:', method, path);
+          return jsonResponse({ error: 'Not Found' }, 404);
         }
-      }
-      
-      if (!handler) {
-        return jsonResponse({ error: 'Not Found' }, 404);
-      }
-      
-      let user = null;
-      const isPublicRoute = path === '/api/register' || path === '/api/login';
-      
-      if (!isPublicRoute) {
-        user = await getAuthenticatedUser(request, env);
-        if (!user) {
-          return jsonResponse({ error: 'Unauthorized' }, 401);
+
+        let user = null;
+        const isPublicRoute = path === '/api/register' || path === '/api/login';
+
+        if (!isPublicRoute) {
+          user = await getAuthenticatedUser(request, env);
+          if (!user) {
+            return jsonResponse({ error: 'Unauthorized' }, 401);
+          }
         }
-      }
-      
-      try {
+
         return await handler(request, env, user, urlParams);
       } catch (error) {
-        console.error('API Error:', error);
-        return jsonResponse({ error: 'Internal Server Error' }, 500);
+        console.error('API Error:', method, path, error);
+        return jsonResponse({ error: error.message || 'Internal Server Error' }, 500);
       }
     }
 

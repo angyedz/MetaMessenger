@@ -116,6 +116,28 @@ async function unbanIP(ip, env) {
   return true;
 }
 
+// Rate limiting - проверка лимита запросов
+async function checkRateLimit(key, limit, window, env) {
+  const now = Date.now();
+  const windowStart = now - window;
+  
+  const rateData = await env.USERS_KV.get(`rate:${key}`);
+  let requests = rateData ? JSON.parse(rateData) : [];
+  
+  // Удаляем старые запросы за пределами окна
+  requests = requests.filter(timestamp => timestamp > windowStart);
+  
+  if (requests.length >= limit) {
+    return { allowed: false, remaining: 0, resetIn: Math.ceil((requests[0] + window - now) / 1000) };
+  }
+  
+  // Добавляем текущий запрос
+  requests.push(now);
+  await env.USERS_KV.put(`rate:${key}`, JSON.stringify(requests), { expirationTtl: Math.ceil(window / 1000) + 60 });
+  
+  return { allowed: true, remaining: limit - requests.length, resetIn: Math.ceil(window / 1000) };
+}
+
 // JSON response helper
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -144,6 +166,16 @@ function handleCorsPreflight() {
 // API Handlers
 const apiHandlers = {
   'POST /api/register': async (request, env) => {
+    const clientIP = getClientIP(request);
+    
+    // Rate limit: 5 регистраций в час с одного IP
+    const rateLimit = await checkRateLimit(`register:${clientIP}`, 5, 3600000, env);
+    if (!rateLimit.allowed) {
+      return jsonResponse({ 
+        error: `Слишком много попыток регистрации. Попробуйте через ${rateLimit.resetIn} сек` 
+      }, 429);
+    }
+    
     let body;
     try {
       body = await request.json();
@@ -156,12 +188,12 @@ const apiHandlers = {
     if (!username || !password) {
       return jsonResponse({ error: 'Username и password обязательны' }, 400);
     }
-    
+
     const existingUser = await env.USERS_KV.get(`user:${username}`);
     if (existingUser) {
       return jsonResponse({ error: 'Пользователь уже существует' }, 409);
     }
-    
+
     const user = {
       id: generateId(),
       username,
@@ -179,32 +211,42 @@ const apiHandlers = {
   },
 
   'POST /api/login': async (request, env) => {
-    const { username, password } = await request.json();
+    const clientIP = getClientIP(request);
     
+    // Rate limit: 10 логинов в час с одного IP
+    const rateLimit = await checkRateLimit(`login:${clientIP}`, 10, 3600000, env);
+    if (!rateLimit.allowed) {
+      return jsonResponse({ 
+        error: `Слишком много попыток входа. Попробуйте через ${rateLimit.resetIn} сек` 
+      }, 429);
+    }
+    
+    const { username, password } = await request.json();
+
     if (!username || !password) {
       return jsonResponse({ error: 'Username и password обязательны' }, 400);
     }
-    
+
     const userStr = await env.USERS_KV.get(`user:${username}`);
     if (!userStr) {
       return jsonResponse({ error: 'Неверный username или password' }, 401);
     }
-    
+
     const user = JSON.parse(userStr);
     const passwordHash = await hashPassword(password);
-    
+
     if (user.passwordHash !== passwordHash) {
       return jsonResponse({ error: 'Неверный username или password' }, 401);
     }
-    
+
     const token = generateSessionToken();
     const sessionData = {
       user: { id: user.id, username: user.username, displayName: user.displayName, avatar: user.avatar },
       expiresAt: Date.now() + (30 * 24 * 60 * 60 * 1000)
     };
-    
+
     await env.SESSIONS_KV.put(token, JSON.stringify(sessionData), { expirationTtl: 30 * 24 * 60 * 60 });
-    
+
     return jsonResponse({ token, user: sessionData.user, expiresAt: sessionData.expiresAt });
   },
 
@@ -314,6 +356,24 @@ const apiHandlers = {
   },
 
   'POST /api/messages/:userId': async (request, env, user, urlParams) => {
+    const clientIP = getClientIP(request);
+    const userId = user.id;
+    
+    // Rate limit: 30 сообщений в минуту и 100 в час на пользователя
+    const rateLimitMinute = await checkRateLimit(`msg:${userId}:min`, 30, 60000, env);
+    if (!rateLimitMinute.allowed) {
+      return jsonResponse({ 
+        error: `Слишком много сообщений. Попробуйте через ${rateLimitMinute.resetIn} сек` 
+      }, 429);
+    }
+    
+    const rateLimitHour = await checkRateLimit(`msg:${userId}:hour`, 100, 3600000, env);
+    if (!rateLimitHour.allowed) {
+      return jsonResponse({ 
+        error: `Превышен лимит сообщений в час. Попробуйте через ${rateLimitHour.resetIn} сек` 
+      }, 429);
+    }
+    
     const targetUserId = urlParams[0];
     const { text } = await request.json();
 
@@ -325,14 +385,21 @@ const apiHandlers = {
       return jsonResponse({ error: 'Сообщение слишком длинное (максимум 2000 символов)' }, 400);
     }
 
+    // Проверка на одинаковые сообщения (спам)
+    const chatId = [user.id, targetUserId].sort().join('_');
+    const messagesStr = await env.MESSAGES_KV.get(`chat:${chatId}`);
+    const messages = messagesStr ? JSON.parse(messagesStr) : [];
+    
+    const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+    if (lastMessage && lastMessage.senderId === user.id && lastMessage.text === text.trim()) {
+      // Возвращаем последнее сообщение вместо дубликата
+      return jsonResponse({ message: lastMessage, duplicate: true }, 200);
+    }
+
     const targetUsername = await env.USERS_KV.get(`userId:${targetUserId}`);
     if (!targetUsername) {
       return jsonResponse({ error: 'Пользователь не найден' }, 404);
     }
-
-    const chatId = [user.id, targetUserId].sort().join('_');
-    const messagesStr = await env.MESSAGES_KV.get(`chat:${chatId}`);
-    const messages = messagesStr ? JSON.parse(messagesStr) : [];
 
     const message = {
       id: generateId(),
